@@ -51,8 +51,35 @@ namespace folly {
 class TDigest {
  public:
   static constexpr size_t kDefaultMaxSize = 100;
+  static constexpr size_t kMinMaxSize = 10;
+  static constexpr size_t kMaxMaxSize = 1000;
   // Recommended number of values to buffer before each merge.
   static constexpr size_t kDefaultBufferSize = 1000;
+  // Dynamic adjustment parameters
+  static constexpr double kTailRatioThreshold = 0.1; // 10% of data in tails
+  static constexpr double kVarianceThreshold = 0.1; // 10% relative variance
+  static constexpr double kAdjustmentFactor = 1.5; // Factor to adjust maxSize by
+
+  // Class to track distribution statistics for dynamic adjustment
+  class DistributionStats { 
+   public:
+    void update(double value);
+    void reset();
+    double getMean() const { return mean_; }
+    double getVariance() const { return variance_; }
+    double getTailRatio() const { return tailRatio_; }
+    double getMin() const { return min_; }
+    double getMax() const { return max_; }
+    size_t getCount() const { return count_; }
+   private:
+    double mean_ = 0.0;
+    double variance_ = 0.0;
+    double tailRatio_ = 0.0;
+    double min_ = std::numeric_limits<double>::infinity();
+    double max_ = -std::numeric_limits<double>::infinity();
+    size_t count_ = 0;
+    size_t tailCount_ = 0;
+  };
 
   class Centroid {
    public:
@@ -84,7 +111,10 @@ class TDigest {
     std::vector<Centroid> buf;
   };
 
-  explicit TDigest(size_t maxSize = kDefaultMaxSize) : maxSize_(maxSize) {}
+  explicit TDigest(size_t maxSize = kDefaultMaxSize, bool dynamicAdjustment = false)
+      : maxSize_(maxSize), 
+        initialMaxSize_(maxSize),
+        dynamicAdjustment_(dynamicAdjustment) {}
 
   explicit TDigest(
       std::vector<Centroid> centroids,
@@ -148,6 +178,8 @@ class TDigest {
   const std::vector<Centroid>& getCentroids() const { return centroids_; }
 
   size_t maxSize() const { return maxSize_; }
+  void setDynamicAdjustment(bool enabled) { dynamicAdjustment_ = enabled; }
+  bool getDynamicAdjustment() const { return dynamicAdjustment_; }
 
  private:
   class CentroidMerger;
@@ -164,10 +196,13 @@ class TDigest {
 
   std::vector<Centroid> centroids_;
   size_t maxSize_;
+  size_t initialMaxSize_;
+  bool dynamicAdjustment_;
   double sum_ = 0.0;
   double count_ = 0.0;
   double max_ = std::numeric_limits<double>::quiet_NaN();
   double min_ = std::numeric_limits<double>::quiet_NaN();
+  DistributionStats stats_;
 };
 
 } // namespace folly

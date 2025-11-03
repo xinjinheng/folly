@@ -135,6 +135,50 @@ double clamp(double v, double lo, double hi) {
 
 } // namespace
 
+void TDigest::DistributionStats::update(double value) {
+  if (count_ == 0) {
+    mean_ = value;
+    variance_ = 0.0;
+    min_ = value;
+    max_ = value;
+    tailCount_ = 1;
+  } else {
+    // Update mean and variance using Welford's algorithm
+    double delta = value - mean_;
+    mean_ += delta / (count_ + 1);
+    variance_ += delta * (value - mean_);
+    
+    // Update min and max
+    min_ = std::min(min_, value);
+    max_ = std::max(max_, value);
+    
+    // Check if value is in the tails (outside 10th or 90th percentile)
+    double range = max_ - min_;
+    if (range > 0) {
+      double normalizedValue = (value - min_) / range;
+      if (normalizedValue < 0.1 || normalizedValue > 0.9) {
+        tailCount_++;
+      }
+    } else {
+      // All values are the same, so all are in the same tail
+      tailCount_++;
+    }
+  }
+  
+  count_++;
+  tailRatio_ = static_cast<double>(tailCount_) / count_;
+}
+
+void TDigest::DistributionStats::reset() {
+  mean_ = 0.0;
+  variance_ = 0.0;
+  tailRatio_ = 0.0;
+  min_ = std::numeric_limits<double>::infinity();
+  max_ = -std::numeric_limits<double>::infinity();
+  count_ = 0;
+  tailCount_ = 0;
+}
+
 class TDigest::CentroidMerger {
  public:
   CentroidMerger(
@@ -301,8 +345,39 @@ void TDigest::mergeValues(
     newMin = maybeMin;
     newMax = maybeMax;
   }
+  
+  // Update distribution statistics if dynamic adjustment is enabled
+  size_t adjustedMaxSize = maxSize_;
+  if (dynamicAdjustment_) {
+    // Collect statistics on the new values
+    DistributionStats newStats;
+    for (double value : sortedValues) {
+      newStats.update(value);
+    }
+    
+    // Calculate relative variance
+    double relativeVariance = 0.0;
+    if (newStats.getMean() != 0) {
+      relativeVariance = std::sqrt(newStats.getVariance() / newStats.getCount()) / 
+                        std::abs(newStats.getMean());
+    }
+    
+    // Check if we need to adjust maxSize
+    if (newStats.getTailRatio() > kTailRatioThreshold || 
+        relativeVariance > kVarianceThreshold) {
+      // Increase maxSize to improve accuracy for tails or high variance data
+      adjustedMaxSize = std::min(static_cast<size_t>(maxSize_ * kAdjustmentFactor), kMaxMaxSize);
+    } else if (newStats.getTailRatio() < kTailRatioThreshold / 2 && 
+               relativeVariance < kVarianceThreshold / 2) {
+      // Decrease maxSize to reduce memory usage for stable data
+      adjustedMaxSize = std::max(static_cast<size_t>(maxSize_ / kAdjustmentFactor), kMinMaxSize);
+    }
+    
+    // Update the stats for future adjustments
+    dst.stats_ = newStats;
+  }
 
-  CentroidMerger merger(std::move(workingBuffer), maxSize_, newCount);
+  CentroidMerger merger(std::move(workingBuffer), adjustedMaxSize, newCount);
 
   merge2Containers(
       centroids_,
