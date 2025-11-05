@@ -70,6 +70,54 @@ typename std::enable_if<
     type inline collectN(InputIterator first, InputIterator last, size_t n);
 
 /**
+ * Schedules several tasks and blocks until n of these tasks are completed,
+ * or until the specified timeout is reached.
+ * If any of these n tasks throws an exception, this exception will be
+ * re-thrown, but only when n tasks are complete. If several tasks throw
+ * exceptions one of them will be re-thrown.
+ * If the timeout is reached before n tasks complete, a TimeoutException is thrown.
+ *
+ * @param first Range of tasks to be scheduled
+ * @param last
+ * @param n Number of tasks to wait for
+ * @param timeout Maximum time to wait for tasks to complete
+ *
+ * @return vector of pairs (task index, return value of task)
+ */
+template <class InputIterator, typename Rep, typename Period>
+typename std::enable_if<
+    !std::is_same<
+        invoke_result_t<
+            typename std::iterator_traits<InputIterator>::value_type>,
+        void>::value,
+    std::vector<std::pair<
+        size_t,
+        invoke_result_t<
+            typename std::iterator_traits<InputIterator>::value_type>>>>::
+    type inline collectN(InputIterator first, InputIterator last, size_t n,
+                         const std::chrono::duration<Rep, Period>& timeout);
+
+/**
+ * collectN specialization for functions returning void with timeout
+ *
+ * @param first Range of tasks to be scheduled
+ * @param last
+ * @param n Number of tasks to wait for
+ * @param timeout Maximum time to wait for tasks to complete
+ *
+ * @return vector of completed task indices
+ */
+template <class InputIterator, typename Rep, typename Period>
+typename std::enable_if<
+    std::is_same<
+        invoke_result_t<
+            typename std::iterator_traits<InputIterator>::value_type>,
+        void>::value,
+    std::vector<size_t>>::
+    type inline collectN(InputIterator first, InputIterator last, size_t n,
+                         const std::chrono::duration<Rep, Period>& timeout);
+
+/**
  * Schedules several tasks and blocks until all of these tasks are completed.
  * If any of the tasks throws an exception, this exception will be re-thrown,
  * but only when all the tasks are complete. If several tasks throw exceptions
@@ -104,6 +152,48 @@ typename std::enable_if<
             typename std::iterator_traits<InputIterator>::value_type>,
         void>::value,
     void>::type inline collectAll(InputIterator first, InputIterator last);
+
+/**
+ * Schedules several tasks and blocks until all of these tasks are completed,
+ * or until the specified timeout is reached.
+ * If any of the tasks throws an exception, this exception will be re-thrown,
+ * but only when all the tasks are complete. If several tasks throw exceptions
+ * one of them will be re-thrown.
+ * If the timeout is reached before all tasks complete, a TimeoutException is thrown.
+ *
+ * @param first Range of tasks to be scheduled
+ * @param last
+ * @param timeout Maximum time to wait for tasks to complete
+ *
+ * @return vector of values returned by tasks
+ */
+template <class InputIterator, typename Rep, typename Period>
+typename std::vector<
+    typename std::enable_if<
+        !std::is_same<
+            invoke_result_t<
+                typename std::iterator_traits<InputIterator>::value_type>,
+            void>::value,
+        invoke_result_t<
+            typename std::iterator_traits<InputIterator>::value_type>>::
+        type inline collectAll(InputIterator first, InputIterator last,
+                               const std::chrono::duration<Rep, Period>& timeout);
+
+/**
+ * collectAll specialization for functions returning void with timeout
+ *
+ * @param first Range of tasks to be scheduled
+ * @param last
+ * @param timeout Maximum time to wait for tasks to complete
+ */
+template <class InputIterator, typename Rep, typename Period>
+typename std::enable_if<
+    std::is_same<
+        invoke_result_t<
+            typename std::iterator_traits<InputIterator>::value_type>,
+        void>::value,
+    void>::type inline collectAll(InputIterator first, InputIterator last,
+                                  const std::chrono::duration<Rep, Period>& timeout);
 
 /**
  * Schedules several tasks and blocks until one of them is completed.

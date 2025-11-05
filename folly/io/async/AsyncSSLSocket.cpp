@@ -23,6 +23,7 @@
 #include <cerrno>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include <folly/Format.h>
@@ -87,21 +88,21 @@ void setup_SSL_CTX(SSL_CTX* ctx) {
 // various SSL objects which may get callbacks even during teardown. We may
 // eventually try to fix this
 BIO_METHOD* getSSLBioMethod() {
-  static auto const instance = OpenSSLUtils::newSocketBioMethod().release();
+  static BIO_METHOD* instance = nullptr;
+  static std::once_flag flag;
+  std::call_once(flag, []() {
+    instance = OpenSSLUtils::newSocketBioMethod().release();
+    CHECK(instance != nullptr) << "Failed to create SSL BIO method";
+    // override the bwrite method for MSG_EOR support
+    OpenSSLUtils::setCustomBioWriteMethod(instance, AsyncSSLSocket::bioWrite);
+    OpenSSLUtils::setCustomBioReadMethod(instance, AsyncSSLSocket::bioRead);
+  });
   return instance;
 }
 
 void* initsslBioMethod() {
-  auto sslBioMethod = getSSLBioMethod();
-  // override the bwrite method for MSG_EOR support
-  OpenSSLUtils::setCustomBioWriteMethod(sslBioMethod, AsyncSSLSocket::bioWrite);
-  OpenSSLUtils::setCustomBioReadMethod(sslBioMethod, AsyncSSLSocket::bioRead);
-
-  // Note that the sslBioMethod.type and sslBioMethod.name are not
-  // set here. openssl code seems to be checking ".type == BIO_TYPE_SOCKET" and
-  // then have specific handlings. The sslWriteBioWrite should be compatible
-  // with the one in openssl.
-
+  // Ensure the SSL BIO method is initialized
+  getSSLBioMethod();
   // Return something here to enable AsyncSSLSocket to call this method using
   // a function-scoped static.
   return nullptr;

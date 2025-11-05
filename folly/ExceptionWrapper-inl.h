@@ -65,10 +65,10 @@ inline exception_wrapper::exception_wrapper(exception_wrapper&& that) noexcept
 
 inline exception_wrapper::exception_wrapper(
     std::exception_ptr const& ptr) noexcept
-    : ptr_{ptr} {}
+    : ptr_{ptr ? ptr : (throw std::invalid_argument("exception_ptr is empty"), std::exception_ptr{})} {}
 
 inline exception_wrapper::exception_wrapper(std::exception_ptr&& ptr) noexcept
-    : ptr_{detail::extract_exception_ptr(std::move(ptr))} {}
+    : ptr_{ptr ? detail::extract_exception_ptr(std::move(ptr)) : (throw std::invalid_argument("exception_ptr is empty"), std::exception_ptr{})} {}
 
 template <
     class Ex,
