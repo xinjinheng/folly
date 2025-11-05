@@ -153,7 +153,8 @@ class exception_wrapper final {
   //! \post `type() == that.type()`
   exception_wrapper& operator=(exception_wrapper const& that) = default;
 
-  //! \post `!ptr || bool(*this)`
+  //! \pre `ptr` is not empty
+  //! \post `bool(*this)`
   explicit exception_wrapper(std::exception_ptr const& ptr) noexcept;
   explicit exception_wrapper(std::exception_ptr&& ptr) noexcept;
 
